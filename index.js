@@ -390,15 +390,25 @@ const mainPageHtml = `<!DOCTYPE html>
             setLoading(true);
             
             try {
-                await fetch('/api/add-sso', {
+                const response = await fetch('/api/add-sso', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sso: ssoToken})
                 });
                 
+                const data = await response.json();
+                
                 document.getElementById('quickSsoToken').value = '';
-                showNotification('SSO Token 添加成功');
-                await fetchData(true);
+                
+                if (data.success) {
+                    if (data.added > 0) {
+                        showNotification('成功添加 ' + data.added + ' 个 SSO Token');
+                        // 立即刷新数据，强制忽略缓存
+                        await fetchData(true);
+                    } else {
+                        showNotification('所有 SSO Token 已存在');
+                    }
+                }
             } catch (error) {
                 console.error('Error adding SSO:', error);
                 showNotification('添加失败，请重试');
@@ -648,13 +658,18 @@ const adminPageHtml = `<!DOCTYPE html>
                     body: JSON.stringify({sso: ssoToken})
                 });
                 
-                if (!response.ok) {
-                    throw new Error('添加 SSO 失败');
-                }
+                const data = await response.json();
                 
                 document.getElementById('ssoToken').value = '';
-                showNotification('SSO Token 添加成功');
-                await loadSSOList();
+                
+                if (data.success) {
+                    if (data.added > 0) {
+                        showNotification('成功添加 ' + data.added + ' 个 SSO Token');
+                    } else {
+                        showNotification('所有 SSO Token 已存在');
+                    }
+                    await loadSSOList();
+                }
             } catch (error) {
                 console.error('添加 SSO 失败:', error);
                 showNotification('添加失败，请重试');
@@ -672,12 +687,16 @@ const adminPageHtml = `<!DOCTYPE html>
                     body: JSON.stringify({sso})
                 });
                 
-                if (!response.ok) {
-                    throw new Error('删除 SSO 失败');
-                }
+                const data = await response.json();
                 
-                showNotification('SSO Token 删除成功');
-                await loadSSOList();
+                if (data.success) {
+                    if (data.deleted > 0) {
+                        showNotification('SSO Token 删除成功');
+                    } else {
+                        showNotification('SSO Token 不存在');
+                    }
+                    await loadSSOList();
+                }
             } catch (error) {
                 console.error('删除 SSO 失败:', error);
                 showNotification('删除失败，请重试');
@@ -1044,22 +1063,78 @@ async function handleRequest(request, env) {
             .filter(s => s.length > 0);
         
         // 添加新的未重复的 SSO
+        let addedCount = 0;
         for (const newSso of newSsos) {
             if (!list.includes(newSso)) {
                 list.push(newSso);
+                addedCount++;
             }
         }
         
-        await saveSsoList(env, list);
-        return new Response(JSON.stringify({success: true}));
+        if (addedCount > 0) {
+            // 立即保存到 KV 存储，不使用防抖动
+            await env.GROK_KV.put('sso_list', JSON.stringify(list));
+            
+            // 立即更新内存缓存
+            if (!env.MEMORY_CACHE) env.MEMORY_CACHE = {};
+            const now = Date.now();
+            const memCacheKey = `sso_list_${Math.floor(now / 600000)}`;
+            env.MEMORY_CACHE[memCacheKey] = [...list];
+            
+            // 预取新添加的 SSO 的统计数据
+            const modes = ["DEFAULT", "REASONING", "DEEPSEARCH"];
+            const fetchPromises = [];
+            
+            for (const newSso of newSsos) {
+                if (list.includes(newSso)) {
+                    for (const mode of modes) {
+                        fetchPromises.push(getCachedStats(env, newSso, mode));
+                    }
+                }
+            }
+            
+            // 并行预取数据但不等待结果
+            Promise.all(fetchPromises).catch(err => console.error('预取新 SSO 数据失败:', err));
+        }
+        
+        return new Response(JSON.stringify({
+            success: true,
+            added: addedCount
+        }));
     }
     
     if (url.pathname === '/api/delete-sso' && request.method === 'POST') {
         const { sso } = await request.json();
         const list = await getSsoList(env);
         const newList = list.filter(s => s !== sso);
-        await saveSsoList(env, newList);
-        return new Response(JSON.stringify({success: true}));
+        
+        if (newList.length < list.length) {
+            // 立即保存到 KV 存储，不使用防抖动
+            await env.GROK_KV.put('sso_list', JSON.stringify(newList));
+            
+            // 立即更新内存缓存
+            if (!env.MEMORY_CACHE) env.MEMORY_CACHE = {};
+            const now = Date.now();
+            const memCacheKey = `sso_list_${Math.floor(now / 600000)}`;
+            env.MEMORY_CACHE[memCacheKey] = [...newList];
+            
+            // 清除被删除 SSO 的缓存数据
+            const modes = ["DEFAULT", "REASONING", "DEEPSEARCH"];
+            const clearPromises = [];
+            
+            for (const mode of modes) {
+                const cacheKey = `stats_${sso}_${mode}`;
+                clearPromises.push(env.GROK_KV.delete(cacheKey));
+            }
+            
+            // 并行清除缓存但不等待结果
+            Promise.all(clearPromises).catch(err => console.error('清除已删除 SSO 缓存失败:', err));
+        }
+        
+        return new Response(JSON.stringify({
+            success: true,
+            deleted: list.length - newList.length
+        }));
     }
     
     return new Response('Not Found', { status: 404 });
