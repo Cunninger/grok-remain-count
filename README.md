@@ -1,8 +1,3 @@
-
-
-下面是一个完整详细的 README.md 文件：
-
-
 # Grok API 使用统计
 
 ![Grok API 使用统计](https://your-screenshot-url-here.png)
@@ -26,10 +21,13 @@
 ## 截图
 
 ### 主页面
-![主页面](https://your-main-page-screenshot-url-here.png)
+![image](https://github.com/user-attachments/assets/d82b547e-7935-4237-b060-b07d50472aa9)
+![image](https://github.com/user-attachments/assets/ba02378c-84fa-4c77-b3ea-6947a796f818)
 
-### 管理面板
-![管理面板](https://your-admin-panel-screenshot-url-here.png)
+
+## SSO Token 详情
+![image](https://github.com/user-attachments/assets/50e60e2f-475e-491d-b779-1f0ee22a591d)
+
 
 ## 部署指南
 
