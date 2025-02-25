@@ -104,7 +104,7 @@
 
 ## 贡献指南
 
-欢迎提交 Pull Request 或创建 Issue 来改进这个项目！
+欢迎提交 Pull Request 或创建 Issue 来改进这个项目！ 
 
 ## 许可证
 
