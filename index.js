@@ -7,6 +7,7 @@ const mainPageHtml = `<!DOCTYPE html>
     <title>Grok API 使用统计</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" href="https://restful.doublefenzhuan.me/public/0c64dc36-7736-41d8-9f65-3c043deea152-count.png" type="image/png">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .card-hover {
@@ -416,6 +417,7 @@ const adminPageHtml = `<!DOCTYPE html>
     <title>Grok API 管理界面</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="icon" href="https://github.com/user-attachments/assets/3d59310b-fa23-45df-9401-340137170bd6" type="image/png">
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
@@ -687,6 +689,7 @@ const adminLoginHtml = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员登录</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="icon" href="https://restful.doublefenzhuan.me/public/0c64dc36-7736-41d8-9f65-3c043deea152-count.png" type="image/png">
 </head>
 <body class="bg-gray-100">
     <div class="min-h-screen flex items-center justify-center">
