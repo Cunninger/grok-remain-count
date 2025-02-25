@@ -110,69 +110,212 @@ const adminPageHtml = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grok API 管理界面</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold text-center mb-8">SSO 管理</h1>
-        <div class="max-w-md mx-auto bg-white rounded-lg shadow p-6">
-            <form id="ssoForm" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700">SSO Token (多个token请用英文逗号分隔)</label>
-                    <textarea id="ssoToken" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" 
-                        rows="3" required placeholder="token1,token2,token3..."></textarea>
+        <h1 class="text-3xl font-bold text-center mb-8">SSO 管理面板</h1>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 添加 SSO 表单 -->
+            <div class="lg:col-span-1">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">添加 SSO Token</h2>
+                    <form id="ssoForm" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">SSO Token</label>
+                            <textarea id="ssoToken" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" 
+                                rows="3" required placeholder="多个token请用英文逗号分隔"></textarea>
+                        </div>
+                        <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">
+                            <i class="fas fa-plus mr-2"></i>添加 SSO
+                        </button>
+                    </form>
                 </div>
-                <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">添加 SSO</button>
-            </form>
-            <div class="mt-8">
-                <h2 class="text-xl font-semibold mb-4">现有 SSO 列表</h2>
-                <div id="ssoList" class="space-y-2"></div>
+                
+                <div class="mt-6 bg-white rounded-lg shadow p-6">
+                    <h2 class="text-xl font-semibold mb-4">操作</h2>
+                    <div class="space-y-3">
+                        <a href="/" class="block w-full bg-gray-100 text-center text-gray-700 px-4 py-2 rounded hover:bg-gray-200 transition">
+                            <i class="fas fa-home mr-2"></i>返回主页
+                        </a>
+                        <button id="refreshBtn" class="block w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition">
+                            <i class="fas fa-sync-alt mr-2"></i>刷新数据
+                        </button>
+                        <button id="copyAllBtn" class="block w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">
+                            <i class="fas fa-copy mr-2"></i>复制所有 SSO
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SSO 列表 -->
+            <div class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">SSO Token 列表</h2>
+                        <span id="ssoCount" class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">0 个</span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        Token ID
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        完整 Token
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        操作
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="ssoList" class="bg-white divide-y divide-gray-200">
+                                <!-- SSO 列表将在这里动态生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="noSsoMessage" class="py-8 text-center text-gray-500 hidden">
+                        <i class="fas fa-info-circle text-2xl mb-2"></i>
+                        <p>暂无 SSO Token，请添加</p>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="text-center mt-6">
-            <a href="/" class="text-blue-500 hover:text-blue-600">返回主页</a>
-        </div>
     </div>
+    
+    <!-- 复制成功提示 -->
+    <div id="copyNotification" class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300">
+        <i class="fas fa-check mr-2"></i>复制成功
+    </div>
+    
     <script>
-        async function loadSSOList() {
-            const response = await fetch('/api/sso-list');
-            const data = await response.json();
-            const ssoList = document.getElementById('ssoList');
-            ssoList.innerHTML = '';
+        // 显示复制成功提示
+        function showCopyNotification() {
+            const notification = document.getElementById('copyNotification');
+            notification.classList.remove('translate-y-20', 'opacity-0');
+            notification.classList.add('translate-y-0', 'opacity-100');
             
-            data.forEach(sso => {
-                const item = document.createElement('div');
-                item.className = 'flex justify-between items-center bg-gray-50 p-3 rounded';
-                item.innerHTML = \`
-                    <span class="font-mono">\${sso.substring(0, 8)}...</span>
-                    <button onclick="deleteSso('\${sso}')" class="text-red-500 hover:text-red-600">删除</button>
-                \`;
-                ssoList.appendChild(item);
-            });
+            setTimeout(() => {
+                notification.classList.remove('translate-y-0', 'opacity-100');
+                notification.classList.add('translate-y-20', 'opacity-0');
+            }, 2000);
+        }
+        
+        // 复制文本到剪贴板
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showCopyNotification();
+            } catch (err) {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制');
+            }
+        }
+        
+        // 加载 SSO 列表
+        async function loadSSOList() {
+            try {
+                const response = await fetch('/api/sso-list');
+                const data = await response.json();
+                const ssoList = document.getElementById('ssoList');
+                const noSsoMessage = document.getElementById('noSsoMessage');
+                const ssoCount = document.getElementById('ssoCount');
+                
+                ssoList.innerHTML = '';
+                ssoCount.textContent = data.length + ' 个';
+                
+                if (data.length === 0) {
+                    noSsoMessage.classList.remove('hidden');
+                    return;
+                }
+                
+                noSsoMessage.classList.add('hidden');
+                
+                data.forEach((sso, index) => {
+                    const row = document.createElement('tr');
+                    row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    
+                    row.innerHTML = \`
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            \${sso.substring(0, 8)}...
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                            <div class="flex items-center">
+                                <span class="truncate max-w-xs">\${sso}</span>
+                                <button onclick="copyToClipboard('\${sso}')" class="ml-2 text-blue-500 hover:text-blue-700">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button onclick="deleteSso('\${sso}')" class="text-red-500 hover:text-red-700 transition">
+                                <i class="fas fa-trash-alt mr-1"></i>删除
+                            </button>
+                        </td>
+                    \`;
+                    
+                    ssoList.appendChild(row);
+                });
+            } catch (error) {
+                console.error('加载 SSO 列表失败:', error);
+            }
         }
 
+        // 添加 SSO
         document.getElementById('ssoForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const ssoToken = document.getElementById('ssoToken').value;
             
-            await fetch('/api/add-sso', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({sso: ssoToken})
-            });
-            
-            document.getElementById('ssoToken').value = '';
-            await loadSSOList();
+            try {
+                await fetch('/api/add-sso', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sso: ssoToken})
+                });
+                
+                document.getElementById('ssoToken').value = '';
+                await loadSSOList();
+            } catch (error) {
+                console.error('添加 SSO 失败:', error);
+            }
         });
 
+        // 删除 SSO
         async function deleteSso(sso) {
-            await fetch('/api/delete-sso', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({sso})
-            });
-            await loadSSOList();
+            if (!confirm('确定要删除这个 SSO Token 吗？')) return;
+            
+            try {
+                await fetch('/api/delete-sso', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sso})
+                });
+                await loadSSOList();
+            } catch (error) {
+                console.error('删除 SSO 失败:', error);
+            }
         }
+        
+        // 复制所有 SSO
+        document.getElementById('copyAllBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/sso-list');
+                const data = await response.json();
+                const allSsos = data.join('\\n');
+                await copyToClipboard(allSsos);
+            } catch (error) {
+                console.error('复制所有 SSO 失败:', error);
+            }
+        });
+        
+        // 刷新按钮
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadSSOList();
+        });
 
+        // 初始加载
         loadSSOList();
     </script>
 </body>
@@ -368,15 +511,13 @@ async function handleRequest(request, env) {
         const isAdmin = await isAuthenticated(request);
         
         if (isAdmin) {
+            // 管理员可以看到完整的 SSO 列表
             return new Response(JSON.stringify(list), {
                 headers: {'Content-Type': 'application/json'}
             });
         } else {
-            // 非管理员只返回部分信息
-            const maskedList = list.map(sso => ({
-                id: sso.substring(0, 8) + '...',
-                full: sso
-            }));
+            // 非管理员只能看到部分信息
+            const maskedList = list.map(sso => sso.substring(0, 8) + '...');
             return new Response(JSON.stringify(maskedList), {
                 headers: {'Content-Type': 'application/json'}
             });

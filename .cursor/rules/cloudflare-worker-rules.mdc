@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+---
+
+# Your rule content
+- ## 1. Syntax Restrictions
+- **No Template Strings**: Must use string concatenation (e.g., `"a" + b + "c"`) instead of template literals, as the environment may not support ES6 features [[User Rule]].
+- **Avoid ES6+ Syntax**: For compatibility, it is recommended to use ES5 syntax (e.g., `var` instead of `let/const`, function expressions instead of arrow functions) [[4]].
