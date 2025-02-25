@@ -407,6 +407,7 @@ const mainPageHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// 添加管理面板的通知功能和完整的 HTML 结构
 const adminPageHtml = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -489,29 +490,31 @@ const adminPageHtml = `<!DOCTYPE html>
         </div>
     </div>
     
-    <!-- 复制成功提示 -->
-    <div id="copyNotification" class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300">
-        <i class="fas fa-check mr-2"></i>复制成功
+    <!-- 通知提示 -->
+    <div id="notification" class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center">
+        <i class="fas fa-check-circle mr-2"></i>
+        <span id="notificationMessage">操作成功</span>
     </div>
     
     <script>
-        // 显示复制成功提示
-        function showCopyNotification() {
-            const notification = document.getElementById('copyNotification');
+        // 显示通知
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            document.getElementById('notificationMessage').textContent = message;
             notification.classList.remove('translate-y-20', 'opacity-0');
             notification.classList.add('translate-y-0', 'opacity-100');
             
             setTimeout(() => {
                 notification.classList.remove('translate-y-0', 'opacity-100');
                 notification.classList.add('translate-y-20', 'opacity-0');
-            }, 2000);
+            }, 3000);
         }
         
         // 复制文本到剪贴板
         async function copyToClipboard(text) {
             try {
                 await navigator.clipboard.writeText(text);
-                showCopyNotification();
+                showNotification('复制成功');
             } catch (err) {
                 console.error('复制失败:', err);
                 alert('复制失败，请手动复制');
@@ -522,7 +525,13 @@ const adminPageHtml = `<!DOCTYPE html>
         async function loadSSOList() {
             try {
                 const response = await fetch('/api/sso-list');
+                if (!response.ok) {
+                    throw new Error('获取 SSO 列表失败');
+                }
+                
                 const data = await response.json();
+                console.log('SSO 列表数据:', data); // 调试日志
+                
                 const ssoList = document.getElementById('ssoList');
                 const noSsoMessage = document.getElementById('noSsoMessage');
                 const ssoCount = document.getElementById('ssoCount');
@@ -537,32 +546,49 @@ const adminPageHtml = `<!DOCTYPE html>
                 
                 noSsoMessage.classList.add('hidden');
                 
+                // 遍历 SSO 列表并创建表格行
                 data.forEach((sso, index) => {
                     const row = document.createElement('tr');
                     row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
                     const id = sso.substring(0, 8);
                     
-                    row.innerHTML = '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' +
-                                    id + '...' +
-                                    '</td>' +
-                                    '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">' +
-                                    '<div class="flex items-center">' +
-                                    '<span class="truncate max-w-xs">' + sso + '</span>' +
-                                    '<button onclick="copyToClipboard(\'' + sso + '\')" class="ml-2 text-blue-500 hover:text-blue-700">' +
-                                    '<i class="fas fa-copy"></i>' +
-                                    '</button>' +
-                                    '</div>' +
-                                    '</td>' +
-                                    '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' +
-                                    '<button onclick="deleteSso(\'' + sso + '\')" class="text-red-500 hover:text-red-700 transition">' +
-                                    '<i class="fas fa-trash-alt mr-1"></i>删除' +
-                                    '</button>' +
-                                    '</td>';
+                    // 使用模板字面量创建行内容
+                    const html = 
+                        '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' +
+                        id + '...' +
+                        '</td>' +
+                        '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">' +
+                        '<div class="flex items-center">' +
+                        '<span class="truncate max-w-xs">' + sso + '</span>' +
+                        '<button data-sso="' + sso + '" class="copy-btn ml-2 text-blue-500 hover:text-blue-700">' +
+                        '<i class="fas fa-copy"></i>' +
+                        '</button>' +
+                        '</div>' +
+                        '</td>' +
+                        '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' +
+                        '<button data-sso="' + sso + '" class="delete-btn text-red-500 hover:text-red-700 transition">' +
+                        '<i class="fas fa-trash-alt mr-1"></i>删除' +
+                        '</button>' +
+                        '</td>';
+                    
+                    row.innerHTML = html;
+                    
+                    // 添加事件监听器
+                    const copyBtn = row.querySelector('.copy-btn');
+                    copyBtn.addEventListener('click', () => {
+                        copyToClipboard(sso);
+                    });
+                    
+                    const deleteBtn = row.querySelector('.delete-btn');
+                    deleteBtn.addEventListener('click', () => {
+                        deleteSso(sso);
+                    });
                     
                     ssoList.appendChild(row);
                 });
             } catch (error) {
                 console.error('加载 SSO 列表失败:', error);
+                showNotification('加载 SSO 列表失败');
             }
         }
 
@@ -571,17 +597,28 @@ const adminPageHtml = `<!DOCTYPE html>
             e.preventDefault();
             const ssoToken = document.getElementById('ssoToken').value;
             
+            if (!ssoToken.trim()) {
+                showNotification('请输入有效的 SSO Token');
+                return;
+            }
+            
             try {
-                await fetch('/api/add-sso', {
+                const response = await fetch('/api/add-sso', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sso: ssoToken})
                 });
                 
+                if (!response.ok) {
+                    throw new Error('添加 SSO 失败');
+                }
+                
                 document.getElementById('ssoToken').value = '';
+                showNotification('SSO Token 添加成功');
                 await loadSSOList();
             } catch (error) {
                 console.error('添加 SSO 失败:', error);
+                showNotification('添加失败，请重试');
             }
         });
 
@@ -590,14 +627,21 @@ const adminPageHtml = `<!DOCTYPE html>
             if (!confirm('确定要删除这个 SSO Token 吗？')) return;
             
             try {
-                await fetch('/api/delete-sso', {
+                const response = await fetch('/api/delete-sso', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({sso})
                 });
+                
+                if (!response.ok) {
+                    throw new Error('删除 SSO 失败');
+                }
+                
+                showNotification('SSO Token 删除成功');
                 await loadSSOList();
             } catch (error) {
                 console.error('删除 SSO 失败:', error);
+                showNotification('删除失败，请重试');
             }
         }
         
@@ -606,20 +650,28 @@ const adminPageHtml = `<!DOCTYPE html>
             try {
                 const response = await fetch('/api/sso-list');
                 const data = await response.json();
+                if (data.length === 0) {
+                    showNotification('没有 SSO Token 可复制');
+                    return;
+                }
                 const allSsos = data.join('\\n');
                 await copyToClipboard(allSsos);
             } catch (error) {
                 console.error('复制所有 SSO 失败:', error);
+                showNotification('复制失败，请重试');
             }
         });
         
         // 刷新按钮
         document.getElementById('refreshBtn').addEventListener('click', () => {
             loadSSOList();
+            showNotification('数据已刷新');
         });
 
         // 初始加载
-        loadSSOList();
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSSOList();
+        });
     </script>
 </body>
 </html>`;
