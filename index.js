@@ -327,11 +327,11 @@ const mainPageHtml = `<!DOCTYPE html>
                         const percentage = Math.min(defaultCount / 20 * 100, 100);
                         const colorClass = percentage < 30 ? 'bg-red-500' : 
                                           percentage < 70 ? 'bg-yellow-500' : 'bg-green-500';
-                        const id = sso.substring(0, 8);
+                        const id = sso.length > 8 ? '...' + sso.substring(sso.length - 8) : sso;
                         
                         cardsHtml += '<div class="bg-white rounded-lg shadow p-5 card-hover fade-in">' +
                                '<div class="flex justify-between items-center mb-3">' +
-                               '<h3 class="text-lg font-semibold text-gray-800">SSO ID: ' + id + '...</h3>' +
+                               '<h3 class="text-lg font-semibold text-gray-800">SSO ID: ' + id + '</h3>' +
                                '<span class="text-xs font-medium px-2.5 py-0.5 rounded-full ' + colorClass + ' text-white">' +
                                Math.round(percentage) + '%' +
                                '</span>' +
@@ -599,12 +599,12 @@ const adminPageHtml = `<!DOCTYPE html>
                 data.forEach((sso, index) => {
                     const row = document.createElement('tr');
                     row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-                    const id = sso.substring(0, 8);
+                    const id = sso.length > 8 ? '...' + sso.substring(sso.length - 8) : sso;
                     
                     // 使用模板字面量创建行内容
                     const html = 
                         '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' +
-                        id + '...' +
+                        id +
                         '</td>' +
                         '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">' +
                         '<div class="flex items-center">' +
@@ -1046,8 +1046,8 @@ async function handleRequest(request, env) {
                 headers: {'Content-Type': 'application/json'}
             });
         } else {
-            // 非管理员只能看到部分信息
-            const maskedList = list.map(sso => sso.substring(0, 8) + '...');
+            // 非管理员只能看到部分信息 - 显示后8位而不是前8位
+            const maskedList = list.map(sso => '...' + sso.substring(sso.length - 8));
             return new Response(JSON.stringify(maskedList), {
                 headers: {'Content-Type': 'application/json'}
             });
