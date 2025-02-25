@@ -1,6 +1,7 @@
 # Grok API 使用统计
 
-![Grok API 使用统计](https://your-screenshot-url-here.png)
+![count](https://github.com/user-attachments/assets/3d59310b-fa23-45df-9401-340137170bd6)
+
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
