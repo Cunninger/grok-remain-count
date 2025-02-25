@@ -7,7 +7,7 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC.svg)](https://tailwindcss.com/)
 
-一个基于 Cloudflare Workers 的轻量级应用，用于监控和管理多个 Grok API 账号的使用情况，包括标准、思考和深度模式的剩余调用次数。
+一个基于 Cloudflare Workers 的轻量级应用，用于监控和管理多个 Grok "API" 账号的使用情况，包括标准、思考和深度模式的剩余调用次数。
 
 ## 功能特点
 
