@@ -53,6 +53,7 @@ const mainPageHtml = `<!DOCTYPE html>
 <body class="bg-gray-50">
     <div id="loading" class="loading">
         <div class="spinner"></div>
+        <div id="loadingText" class="mt-3 text-gray-600">正在加载数据...</div>
     </div>
 
     <div class="container mx-auto px-4 py-8">
@@ -157,8 +158,8 @@ const mainPageHtml = `<!DOCTYPE html>
         // 全局变量
         let chartInstance = null;
         let lastUpdate = 0;
-        const REFRESH_INTERVAL = 20000; // 20 秒
-        const CACHE_DURATION = 30000;   // 30 秒
+        const REFRESH_INTERVAL = 300000; // 改为 5 分钟
+        const CACHE_DURATION = 300000;   // 改为 5 分钟
         
         // 显示通知
         function showNotification(message) {
@@ -233,7 +234,25 @@ const mainPageHtml = `<!DOCTYPE html>
                 return; // 使用现有数据
             }
             
+            // 如果有缓存数据，先显示缓存数据，然后在后台刷新
+            if (!force && lastUpdate > 0) {
+                // 使用现有数据，不显示加载动画
+                return;
+            }
+            
+            // 添加随机延迟，避免多用户同时访问
+            if (!force) {
+                const randomDelay = Math.floor(Math.random() * 60000); // 0-60秒随机延迟
+                await new Promise(resolve => setTimeout(resolve, randomDelay));
+            }
+            
             setLoading(true);
+            
+            // 添加超时处理
+            const timeoutId = setTimeout(() => {
+                setLoading(false);
+                showNotification('加载超时，请重试');
+            }, 15000); // 15秒超时
             
             try {
                 const response = await fetch('/api/stats');
@@ -353,6 +372,7 @@ const mainPageHtml = `<!DOCTYPE html>
                 console.error('Error fetching data:', error);
                 showNotification('获取数据失败，请重试');
             } finally {
+                clearTimeout(timeoutId); // 清除超时计时器
                 setLoading(false);
             }
         }
@@ -399,10 +419,27 @@ const mainPageHtml = `<!DOCTYPE html>
             }
         });
         
-        // 初始加载
+        // 修改自动刷新逻辑
+        function setupAutoRefresh() {
+            setInterval(() => {
+                // 只有当页面处于活动状态且上次更新超过刷新间隔时才刷新
+                if (document.visibilityState === 'visible' && Date.now() - lastUpdate > REFRESH_INTERVAL) {
+                    fetchData();
+                }
+            }, REFRESH_INTERVAL);
+            
+            // 页面可见性变化时刷新
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && Date.now() - lastUpdate > CACHE_DURATION) {
+                    fetchData();
+                }
+            });
+        }
+        
+        // 初始化
         document.addEventListener('DOMContentLoaded', () => {
-            fetchData(true);
-            setInterval(() => fetchData(), REFRESH_INTERVAL);
+            fetchData();
+            setupAutoRefresh();
         });
     </script>
 </body>
@@ -743,12 +780,54 @@ const adminLoginHtml = `<!DOCTYPE html>
 
 // KV 操作辅助函数
 async function getSsoList(env) {
-    const list = await env.GROK_KV.get('sso_list');
-    return list ? JSON.parse(list) : [];
+    if (!env.MEMORY_CACHE) {
+        env.MEMORY_CACHE = {};
+    }
+    
+    const cacheKey = 'sso_list';
+    const now = Date.now();
+    // 将缓存粒度从1分钟改为10分钟
+    const memCacheKey = `${cacheKey}_${Math.floor(now / 600000)}`; // 按10分钟缓存
+    
+    if (env.MEMORY_CACHE[memCacheKey]) {
+        return [...env.MEMORY_CACHE[memCacheKey]]; // 返回副本避免引用问题
+    }
+    
+    const list = await env.GROK_KV.get(cacheKey);
+    const result = list ? JSON.parse(list) : [];
+    
+    // 更新内存缓存
+    env.MEMORY_CACHE[memCacheKey] = [...result];
+    return result;
 }
 
 async function saveSsoList(env, list) {
-    await env.GROK_KV.put('sso_list', JSON.stringify(list));
+    // 5. 批量操作和防抖动
+    if (!env.PENDING_OPERATIONS) {
+        env.PENDING_OPERATIONS = {};
+    }
+    
+    const cacheKey = 'sso_list';
+    
+    // 清除之前的定时器
+    if (env.PENDING_OPERATIONS[cacheKey]) {
+        clearTimeout(env.PENDING_OPERATIONS[cacheKey].timer);
+    }
+    
+    // 设置新的定时器，延迟写入
+    env.PENDING_OPERATIONS[cacheKey] = {
+        data: list,
+        timer: setTimeout(async () => {
+            await env.GROK_KV.put(cacheKey, JSON.stringify(env.PENDING_OPERATIONS[cacheKey].data));
+            delete env.PENDING_OPERATIONS[cacheKey];
+            
+            // 更新内存缓存
+            if (!env.MEMORY_CACHE) env.MEMORY_CACHE = {};
+            const now = Date.now();
+            const memCacheKey = `${cacheKey}_${Math.floor(now / 600000)}`;
+            env.MEMORY_CACHE[memCacheKey] = [...list];
+        }, 2000) // 2秒后执行，合并短时间内的多次操作
+    };
 }
 
 // API 请求函数
@@ -772,25 +851,59 @@ async function fetchGrokStats(sso, requestKind = "DEFAULT") {
 // 修改缓存函数
 async function getCachedStats(env, sso, requestKind = "DEFAULT") {
     const cacheKey = `stats_${sso}_${requestKind}`;
+    
+    // 1. 使用内存缓存减少 KV 读取
+    if (!env.MEMORY_CACHE) {
+        env.MEMORY_CACHE = {};
+    }
+    
+    const now = Date.now();
+    // 将缓存粒度从1分钟改为10分钟
+    const memCacheKey = `${cacheKey}_${Math.floor(now / 600000)}`; // 按10分钟缓存
+    
+    // 检查内存缓存
+    if (env.MEMORY_CACHE[memCacheKey]) {
+        return env.MEMORY_CACHE[memCacheKey];
+    }
+    
+    // 2. 延长 KV 缓存时间，减少写入频率
     const cached = await env.GROK_KV.get(cacheKey);
     if (cached) {
         const cachedData = JSON.parse(cached);
-        // 检查缓存是否在 60 秒内
-        if (Date.now() - cachedData.timestamp < 60000) {
+        // 缓存有效期为10分钟
+        if (now - cachedData.timestamp < 600000) { // 10分钟
+            // 更新内存缓存
+            env.MEMORY_CACHE[memCacheKey] = cachedData.value;
             return cachedData.value;
         }
     }
     
     try {
         const stats = await fetchGrokStats(sso, requestKind);
-        // 缓存 60 秒
-        await env.GROK_KV.put(cacheKey, JSON.stringify({
-            value: stats,
-            timestamp: Date.now()
-        }), {expirationTtl: 120}); // 2分钟过期，但实际上60秒后会刷新
+        
+        // 3. 只在数据变化时才写入 KV
+        let shouldUpdate = true;
+        if (cached) {
+            const cachedData = JSON.parse(cached);
+            // 增加阈值判断，只有变化超过一定值才更新
+            if (Math.abs(cachedData.value - stats) < 3) {
+                shouldUpdate = false;
+            }
+        }
+        
+        if (shouldUpdate) {
+            // 写入 KV，有效期为10分钟
+            await env.GROK_KV.put(cacheKey, JSON.stringify({
+                value: stats,
+                timestamp: now
+            }), {expirationTtl: 600}); // 10分钟过期
+        }
+        
+        // 更新内存缓存
+        env.MEMORY_CACHE[memCacheKey] = stats;
         return stats;
     } catch (error) {
-        return 0;
+        return cached ? JSON.parse(cached).value : 0;
     }
 }
 
@@ -890,13 +1003,16 @@ async function handleRequest(request, env) {
             stats[result.sso][result.mode] = result.count;
         }
         
+        // 添加浏览器缓存，减少 API 请求次数
+        const cacheControl = 'public, max-age=300'; // 5分钟浏览器缓存
+        
         return new Response(JSON.stringify({
             stats: stats,
             modeLabels: modeLabels
         }), {
             headers: { 
                 'Content-Type': 'application/json',
-                'Cache-Control': 'public, max-age=60' // 浏览器缓存 1 分钟
+                'Cache-Control': cacheControl
             },
         });
     }
