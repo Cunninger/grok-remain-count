@@ -6,40 +6,243 @@ const mainPageHtml = `<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grok API 使用统计</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+    </style>
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold text-center mb-8">Grok API 使用统计</h1>
-        
-        <!-- 添加快速添加表单 -->
-        <div class="max-w-md mx-auto mb-8">
-            <form id="quickAddForm" class="flex gap-2">
-                <input type="text" id="quickSsoToken" 
-                    class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="输入 SSO Token" required>
-                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                    快速添加
-                </button>
-            </form>
-        </div>
+<body class="bg-gray-50">
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+    </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="ssoCards">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Grok API 使用统计</h1>
+            <div class="flex items-center">
+                <span id="lastUpdated" class="text-sm text-gray-500 mr-4">上次更新: 刚刚</span>
+                <button id="refreshButton" class="bg-blue-500 text-white px-3 py-1 rounded-full hover:bg-blue-600 flex items-center">
+                    <i class="fas fa-sync-alt mr-1"></i> 刷新
+                </button>
+            </div>
         </div>
-        <div class="mt-8 text-center">
-            <p class="text-xl">总剩余次数: <span id="totalRemaining" class="font-bold">0</span></p>
-            <a href="/admin" class="mt-4 inline-block bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">管理面板</a>
+        
+        <!-- 数据概览 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6 card-hover">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-gray-500">总剩余次数</p>
+                        <h2 id="totalRemaining" class="text-3xl font-bold text-blue-600">0</h2>
+                    </div>
+                    <div class="bg-blue-100 p-3 rounded-full">
+                        <i class="fas fa-chart-line text-blue-500"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6 card-hover">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-gray-500">SSO 数量</p>
+                        <h2 id="ssoCount" class="text-3xl font-bold text-green-600">0</h2>
+                    </div>
+                    <div class="bg-green-100 p-3 rounded-full">
+                        <i class="fas fa-key text-green-500"></i>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6 card-hover">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="text-sm text-gray-500">平均剩余次数</p>
+                        <h2 id="avgRemaining" class="text-3xl font-bold text-purple-600">0</h2>
+                    </div>
+                    <div class="bg-purple-100 p-3 rounded-full">
+                        <i class="fas fa-calculator text-purple-500"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 图表和添加表单 -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-2 bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">剩余次数分布</h3>
+                <div class="h-64">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="text-lg font-semibold mb-4">添加 SSO Token</h3>
+                <form id="quickAddForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">SSO Token</label>
+                        <input type="text" id="quickSsoToken" 
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="输入 SSO Token" required>
+                        <p class="text-xs text-gray-500 mt-1">多个 token 请用英文逗号分隔</p>
+                    </div>
+                    <button type="submit" class="w-full bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition flex items-center justify-center">
+                        <i class="fas fa-plus mr-2"></i> 添加 Token
+                    </button>
+                </form>
+                <div class="mt-4 text-center">
+                    <a href="/admin" class="text-blue-500 hover:text-blue-700 flex items-center justify-center">
+                        <i class="fas fa-cog mr-1"></i> 管理面板
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- SSO 卡片列表 -->
+        <h3 class="text-xl font-semibold mb-4">SSO Token 详情</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="ssoCards"></div>
+        
+        <!-- 无数据提示 -->
+        <div id="noDataMessage" class="hidden text-center py-12">
+            <i class="fas fa-info-circle text-blue-500 text-4xl mb-4"></i>
+            <p class="text-gray-600">暂无 SSO Token 数据，请添加 Token</p>
         </div>
     </div>
+    
+    <!-- 添加成功提示 -->
+    <div id="successNotification" class="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 flex items-center">
+        <i class="fas fa-check-circle mr-2"></i>
+        <span id="notificationMessage">操作成功</span>
+    </div>
+    
     <script>
+        // 全局变量
+        let chartInstance = null;
         let lastUpdate = 0;
-        const REFRESH_INTERVAL = 30000; // 30 秒
-        const CACHE_DURATION = 60000;   // 1 分钟
+        const REFRESH_INTERVAL = 20000; // 20 秒
+        const CACHE_DURATION = 30000;   // 30 秒
         
+        // 显示通知
+        function showNotification(message) {
+            const notification = document.getElementById('successNotification');
+            document.getElementById('notificationMessage').textContent = message;
+            notification.classList.remove('translate-y-20', 'opacity-0');
+            notification.classList.add('translate-y-0', 'opacity-100');
+            
+            setTimeout(() => {
+                notification.classList.remove('translate-y-0', 'opacity-100');
+                notification.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+        
+        // 显示/隐藏加载动画
+        function setLoading(isLoading) {
+            const loader = document.getElementById('loading');
+            if (isLoading) {
+                loader.style.display = 'flex';
+            } else {
+                loader.style.display = 'none';
+            }
+        }
+        
+        // 更新最后更新时间
+        function updateLastUpdated() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString();
+            document.getElementById('lastUpdated').textContent = '上次更新: ' + timeStr;
+        }
+        
+        // 更新图表
+        function updateChart(data) {
+            const ctx = document.getElementById('distributionChart').getContext('2d');
+            
+            // 销毁现有图表
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            
+            // 准备数据
+            const labels = Object.keys(data).map(key => key.substring(0, 8) + '...');
+            const values = Object.values(data);
+            
+            // 创建新图表
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '剩余调用次数',
+                        data: values,
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 获取并显示数据
         async function fetchData(force = false) {
             const now = Date.now();
             if (!force && now - lastUpdate < CACHE_DURATION) {
                 return; // 使用现有数据
             }
+            
+            setLoading(true);
             
             try {
                 const response = await fetch('/api/stats');
@@ -47,44 +250,81 @@ const mainPageHtml = `<!DOCTYPE html>
                 
                 const data = await response.json();
                 const ssoCards = document.getElementById('ssoCards');
-                let total = 0;
+                const noDataMessage = document.getElementById('noDataMessage');
                 
-                // 预先创建所有卡片的 HTML
-                const cardsHtml = Object.entries(data).map(([key, value]) => {
-                    total += value;
-                    const id = key.substring(0, 8);
-                    return '<div class="bg-white p-6 rounded-lg shadow">' +
-                           '<h3 class="text-lg font-semibold mb-2">SSO ID: ' + id + '...</h3>' +
-                           '<p class="text-2xl font-bold text-blue-600">' + value + '</p>' +
-                           '<p class="text-gray-600">剩余调用次数</p></div>';
-                }).join('');
+                // 计算统计数据
+                const values = Object.values(data);
+                const total = values.reduce((sum, val) => sum + val, 0);
+                const count = values.length;
+                const avg = count > 0 ? Math.round(total / count) : 0;
                 
-                // 一次性更新 DOM
-                ssoCards.innerHTML = cardsHtml;
+                // 更新统计卡片
                 document.getElementById('totalRemaining').textContent = total;
+                document.getElementById('ssoCount').textContent = count;
+                document.getElementById('avgRemaining').textContent = avg;
+                
+                // 更新图表
+                updateChart(data);
+                
+                // 显示或隐藏无数据消息
+                if (count === 0) {
+                    ssoCards.innerHTML = '';
+                    noDataMessage.classList.remove('hidden');
+                } else {
+                    noDataMessage.classList.add('hidden');
+                    
+                    // 预先创建所有卡片的 HTML
+                    const cardsHtml = Object.entries(data).map(([key, value]) => {
+                        // 计算百分比颜色 (假设最大值是20)
+                        const percentage = Math.min(value / 20 * 100, 100);
+                        const colorClass = percentage < 30 ? 'bg-red-500' : 
+                                          percentage < 70 ? 'bg-yellow-500' : 'bg-green-500';
+                        const id = key.substring(0, 8);
+                        
+                        return '<div class="bg-white rounded-lg shadow p-5 card-hover fade-in">' +
+                               '<div class="flex justify-between items-center mb-3">' +
+                               '<h3 class="text-lg font-semibold text-gray-800">SSO ID: ' + id + '...</h3>' +
+                               '<span class="text-xs font-medium px-2.5 py-0.5 rounded-full ' + colorClass + ' text-white">' +
+                               Math.round(percentage) + '%' +
+                               '</span>' +
+                               '</div>' +
+                               '<div class="mb-2">' +
+                               '<div class="w-full bg-gray-200 rounded-full h-2.5">' +
+                               '<div class="' + colorClass + ' h-2.5 rounded-full" style="width: ' + percentage + '%"></div>' +
+                               '</div>' +
+                               '</div>' +
+                               '<div class="flex justify-between items-center">' +
+                               '<p class="text-gray-600 text-sm">剩余调用次数</p>' +
+                               '<p class="text-2xl font-bold text-blue-600">' + value + '</p>' +
+                               '</div>' +
+                               '</div>';
+                    }).join('');
+                    
+                    // 一次性更新 DOM
+                    ssoCards.innerHTML = cardsHtml;
+                }
+                
+                updateLastUpdated();
                 lastUpdate = now;
             } catch (error) {
                 console.error('Error fetching data:', error);
+                showNotification('获取数据失败，请重试');
+            } finally {
+                setLoading(false);
             }
         }
-        
-        // 初始加载
-        fetchData(true);
-        
-        // 定期刷新
-        setInterval(() => fetchData(), REFRESH_INTERVAL);
-        
-        // 页面可见性变化时刷新
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                fetchData(true);
-            }
-        });
         
         // 添加快速添加功能
         document.getElementById('quickAddForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const ssoToken = document.getElementById('quickSsoToken').value;
+            
+            if (!ssoToken.trim()) {
+                showNotification('请输入有效的 SSO Token');
+                return;
+            }
+            
+            setLoading(true);
             
             try {
                 await fetch('/api/add-sso', {
@@ -94,10 +334,32 @@ const mainPageHtml = `<!DOCTYPE html>
                 });
                 
                 document.getElementById('quickSsoToken').value = '';
-                fetchData(true);
+                showNotification('SSO Token 添加成功');
+                await fetchData(true);
             } catch (error) {
                 console.error('Error adding SSO:', error);
+                showNotification('添加失败，请重试');
+            } finally {
+                setLoading(false);
             }
+        });
+        
+        // 刷新按钮
+        document.getElementById('refreshButton').addEventListener('click', () => {
+            fetchData(true);
+        });
+        
+        // 页面可见性变化时刷新
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                fetchData(true);
+            }
+        });
+        
+        // 初始加载
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData(true);
+            setInterval(() => fetchData(), REFRESH_INTERVAL);
         });
     </script>
 </body>
@@ -236,25 +498,24 @@ const adminPageHtml = `<!DOCTYPE html>
                 data.forEach((sso, index) => {
                     const row = document.createElement('tr');
                     row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                    const id = sso.substring(0, 8);
                     
-                    row.innerHTML = \`
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            \${sso.substring(0, 8)}...
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                            <div class="flex items-center">
-                                <span class="truncate max-w-xs">\${sso}</span>
-                                <button onclick="copyToClipboard('\${sso}')" class="ml-2 text-blue-500 hover:text-blue-700">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <button onclick="deleteSso('\${sso}')" class="text-red-500 hover:text-red-700 transition">
-                                <i class="fas fa-trash-alt mr-1"></i>删除
-                            </button>
-                        </td>
-                    \`;
+                    row.innerHTML = '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' +
+                                    id + '...' +
+                                    '</td>' +
+                                    '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">' +
+                                    '<div class="flex items-center">' +
+                                    '<span class="truncate max-w-xs">' + sso + '</span>' +
+                                    '<button onclick="copyToClipboard(\'' + sso + '\')" class="ml-2 text-blue-500 hover:text-blue-700">' +
+                                    '<i class="fas fa-copy"></i>' +
+                                    '</button>' +
+                                    '</div>' +
+                                    '</td>' +
+                                    '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' +
+                                    '<button onclick="deleteSso(\'' + sso + '\')" class="text-red-500 hover:text-red-700 transition">' +
+                                    '<i class="fas fa-trash-alt mr-1"></i>删除' +
+                                    '</button>' +
+                                    '</td>';
                     
                     ssoList.appendChild(row);
                 });
@@ -408,18 +669,25 @@ async function fetchGrokStats(sso) {
     return data.remainingQueries;
 }
 
-// 添加缓存相关函数
+// 修改缓存时间
 async function getCachedStats(env, sso) {
     const cacheKey = `stats_${sso}`;
     const cached = await env.GROK_KV.get(cacheKey);
     if (cached) {
-        return parseInt(cached);
+        const cachedData = JSON.parse(cached);
+        // 检查缓存是否在 60 秒内
+        if (Date.now() - cachedData.timestamp < 60000) {
+            return cachedData.value;
+        }
     }
     
     try {
         const stats = await fetchGrokStats(sso);
-        // 缓存 5 分钟
-        await env.GROK_KV.put(cacheKey, stats.toString(), {expirationTtl: 300});
+        // 缓存 60 秒
+        await env.GROK_KV.put(cacheKey, JSON.stringify({
+            value: stats,
+            timestamp: Date.now()
+        }), {expirationTtl: 120}); // 2分钟过期，但实际上60秒后会刷新
         return stats;
     } catch (error) {
         return 0;
