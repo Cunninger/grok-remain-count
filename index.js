@@ -448,7 +448,7 @@ const adminPageHtml = `<!DOCTYPE html>
                             <i class="fas fa-sync-alt mr-2"></i>刷新数据
                         </button>
                         <button id="copyAllBtn" class="block w-full bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">
-                            <i class="fas fa-copy mr-2"></i>复制所有 SSO
+                            <i class="fas fa-copy mr-2"></i>复制所有 SSO(,分隔)
                         </button>
                     </div>
                 </div>
@@ -645,7 +645,7 @@ const adminPageHtml = `<!DOCTYPE html>
             }
         }
         
-        // 复制所有 SSO
+        // 修改复制所有 SSO 的功能
         document.getElementById('copyAllBtn').addEventListener('click', async () => {
             try {
                 const response = await fetch('/api/sso-list');
@@ -654,8 +654,11 @@ const adminPageHtml = `<!DOCTYPE html>
                     showNotification('没有 SSO Token 可复制');
                     return;
                 }
-                const allSsos = data.join('\\n');
+                
+                // 使用逗号分隔所有 SSO
+                const allSsos = data.join(',');
                 await copyToClipboard(allSsos);
+                showNotification('已复制 ' + data.length + ' 个 SSO Token');
             } catch (error) {
                 console.error('复制所有 SSO 失败:', error);
                 showNotification('复制失败，请重试');
