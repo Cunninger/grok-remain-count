@@ -198,36 +198,26 @@ const mainPageHtml = `<!DOCTYPE html>
                 chartInstance.destroy();
             }
             
-            // 准备数据
-            const labels = Object.keys(data).map(key => key.substring(0, 8) + '...');
-            const values = Object.values(data);
-            
             // 创建新图表
             chartInstance = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: '剩余调用次数',
-                        data: values,
-                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
-                        borderColor: 'rgba(59, 130, 246, 1)',
-                        borderWidth: 1
-                    }]
-                },
+                type: 'doughnut',
+                data: data,
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: false
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                precision: 0
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return label + ': ' + value + ' (' + percentage + '%)';
+                                }
                             }
                         }
                     }
@@ -248,57 +238,109 @@ const mainPageHtml = `<!DOCTYPE html>
                 const response = await fetch('/api/stats');
                 if (!response.ok) throw new Error('Network response was not ok');
                 
-                const data = await response.json();
+                const responseData = await response.json();
+                const data = responseData.stats;
+                const modeLabels = responseData.modeLabels;
                 const ssoCards = document.getElementById('ssoCards');
                 const noDataMessage = document.getElementById('noDataMessage');
                 
                 // 计算统计数据
-                const values = Object.values(data);
-                const total = values.reduce((sum, val) => sum + val, 0);
-                const count = values.length;
-                const avg = count > 0 ? Math.round(total / count) : 0;
+                let totalDefault = 0;
+                let totalReasoning = 0;
+                let totalDeepSearch = 0;
+                let ssoCount = 0;
+                
+                for (const sso in data) {
+                    ssoCount++;
+                    totalDefault += data[sso].DEFAULT || 0;
+                    totalReasoning += data[sso].REASONING || 0;
+                    totalDeepSearch += data[sso].DEEPSEARCH || 0;
+                }
+                
+                const totalAll = totalDefault + totalReasoning + totalDeepSearch;
+                const avgDefault = ssoCount > 0 ? Math.round(totalDefault / ssoCount) : 0;
                 
                 // 更新统计卡片
-                document.getElementById('totalRemaining').textContent = total;
-                document.getElementById('ssoCount').textContent = count;
-                document.getElementById('avgRemaining').textContent = avg;
+                document.getElementById('totalRemaining').textContent = totalAll;
+                document.getElementById('ssoCount').textContent = ssoCount;
+                document.getElementById('avgRemaining').textContent = avgDefault;
+                
+                // 更新图表数据
+                const chartData = {
+                    labels: ['标准', '思考', '深度'],
+                    datasets: [{
+                        data: [totalDefault, totalReasoning, totalDeepSearch],
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.5)',
+                            'rgba(16, 185, 129, 0.5)',
+                            'rgba(139, 92, 246, 0.5)'
+                        ],
+                        borderColor: [
+                            'rgba(59, 130, 246, 1)',
+                            'rgba(16, 185, 129, 1)',
+                            'rgba(139, 92, 246, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                };
                 
                 // 更新图表
-                updateChart(data);
+                updateChart(chartData);
                 
                 // 显示或隐藏无数据消息
-                if (count === 0) {
+                if (ssoCount === 0) {
                     ssoCards.innerHTML = '';
                     noDataMessage.classList.remove('hidden');
                 } else {
                     noDataMessage.classList.add('hidden');
                     
                     // 预先创建所有卡片的 HTML
-                    const cardsHtml = Object.entries(data).map(([key, value]) => {
+                    let cardsHtml = '';
+                    
+                    for (const sso in data) {
+                        const defaultCount = data[sso].DEFAULT || 0;
+                        const reasoningCount = data[sso].REASONING || 0;
+                        const deepSearchCount = data[sso].DEEPSEARCH || 0;
+                        const totalCount = defaultCount + reasoningCount + deepSearchCount;
+                        
                         // 计算百分比颜色 (假设最大值是20)
-                        const percentage = Math.min(value / 20 * 100, 100);
+                        const percentage = Math.min(defaultCount / 20 * 100, 100);
                         const colorClass = percentage < 30 ? 'bg-red-500' : 
                                           percentage < 70 ? 'bg-yellow-500' : 'bg-green-500';
-                        const id = key.substring(0, 8);
+                        const id = sso.substring(0, 8);
                         
-                        return '<div class="bg-white rounded-lg shadow p-5 card-hover fade-in">' +
+                        cardsHtml += '<div class="bg-white rounded-lg shadow p-5 card-hover fade-in">' +
                                '<div class="flex justify-between items-center mb-3">' +
                                '<h3 class="text-lg font-semibold text-gray-800">SSO ID: ' + id + '...</h3>' +
                                '<span class="text-xs font-medium px-2.5 py-0.5 rounded-full ' + colorClass + ' text-white">' +
                                Math.round(percentage) + '%' +
                                '</span>' +
                                '</div>' +
-                               '<div class="mb-2">' +
-                               '<div class="w-full bg-gray-200 rounded-full h-2.5">' +
+                               '<div class="mb-4">' +
+                               '<div class="w-full bg-gray-200 rounded-full h-2.5 mb-1">' +
                                '<div class="' + colorClass + ' h-2.5 rounded-full" style="width: ' + percentage + '%"></div>' +
                                '</div>' +
                                '</div>' +
+                               '<div class="grid grid-cols-3 gap-2 mb-3 text-center text-sm">' +
+                               '<div class="bg-blue-50 p-2 rounded">' +
+                               '<div class="font-semibold text-blue-700">标准</div>' +
+                               '<div class="text-blue-600">' + defaultCount + '</div>' +
+                               '</div>' +
+                               '<div class="bg-green-50 p-2 rounded">' +
+                               '<div class="font-semibold text-green-700">思考</div>' +
+                               '<div class="text-green-600">' + reasoningCount + '</div>' +
+                               '</div>' +
+                               '<div class="bg-purple-50 p-2 rounded">' +
+                               '<div class="font-semibold text-purple-700">深度</div>' +
+                               '<div class="text-purple-600">' + deepSearchCount + '</div>' +
+                               '</div>' +
+                               '</div>' +
                                '<div class="flex justify-between items-center">' +
-                               '<p class="text-gray-600 text-sm">剩余调用次数</p>' +
-                               '<p class="text-2xl font-bold text-blue-600">' + value + '</p>' +
+                               '<p class="text-gray-600 text-sm">总剩余次数</p>' +
+                               '<p class="text-2xl font-bold text-blue-600">' + totalCount + '</p>' +
                                '</div>' +
                                '</div>';
-                    }).join('');
+                    }
                     
                     // 一次性更新 DOM
                     ssoCards.innerHTML = cardsHtml;
@@ -652,7 +694,7 @@ async function saveSsoList(env, list) {
 }
 
 // API 请求函数
-async function fetchGrokStats(sso) {
+async function fetchGrokStats(sso, requestKind = "DEFAULT") {
     const response = await fetch('https://grok.com/rest/rate-limits', {
         method: 'POST',
         headers: {
@@ -660,7 +702,7 @@ async function fetchGrokStats(sso) {
             'Cookie': 'sso=' + sso + '; sso-rw=' + sso + '; _ga_8FEWB057YH=GS1.1.1740406711.1.1.1740407320.0.0.0',
         },
         body: JSON.stringify({
-            "requestKind": "DEFAULT",
+            "requestKind": requestKind,
             "modelName": "grok-3"
         })
     });
@@ -669,9 +711,9 @@ async function fetchGrokStats(sso) {
     return data.remainingQueries;
 }
 
-// 修改缓存时间
-async function getCachedStats(env, sso) {
-    const cacheKey = `stats_${sso}`;
+// 修改缓存函数
+async function getCachedStats(env, sso, requestKind = "DEFAULT") {
+    const cacheKey = `stats_${sso}_${requestKind}`;
     const cached = await env.GROK_KV.get(cacheKey);
     if (cached) {
         const cachedData = JSON.parse(cached);
@@ -682,7 +724,7 @@ async function getCachedStats(env, sso) {
     }
     
     try {
-        const stats = await fetchGrokStats(sso);
+        const stats = await fetchGrokStats(sso, requestKind);
         // 缓存 60 秒
         await env.GROK_KV.put(cacheKey, JSON.stringify({
             value: stats,
@@ -757,16 +799,43 @@ async function handleRequest(request, env) {
     // API 路由
     if (url.pathname === '/api/stats') {
         const ssoList = await getSsoList(env);
+        const modes = ["DEFAULT", "REASONING", "DEEPSEARCH"];
+        const modeLabels = {
+            "DEFAULT": "标准",
+            "REASONING": "思考",
+            "DEEPSEARCH": "深度"
+        };
         
-        // 并发请求所有 SSO 的统计数据
-        const statsPromises = ssoList.map(sso => 
-            getCachedStats(env, sso).then(count => [sso, count])
-        );
+        // 并发请求所有 SSO 的所有模式的统计数据
+        const statsPromises = [];
+        
+        for (const sso of ssoList) {
+            for (const mode of modes) {
+                statsPromises.push(
+                    getCachedStats(env, sso, mode).then(count => ({
+                        sso: sso,
+                        mode: mode,
+                        count: count
+                    }))
+                );
+            }
+        }
         
         const results = await Promise.all(statsPromises);
-        const stats = Object.fromEntries(results);
         
-        return new Response(JSON.stringify(stats), {
+        // 重新组织数据结构
+        const stats = {};
+        for (const result of results) {
+            if (!stats[result.sso]) {
+                stats[result.sso] = {};
+            }
+            stats[result.sso][result.mode] = result.count;
+        }
+        
+        return new Response(JSON.stringify({
+            stats: stats,
+            modeLabels: modeLabels
+        }), {
             headers: { 
                 'Content-Type': 'application/json',
                 'Cache-Control': 'public, max-age=60' // 浏览器缓存 1 分钟
